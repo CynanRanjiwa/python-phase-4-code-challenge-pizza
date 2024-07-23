@@ -1,41 +1,54 @@
-#!/usr/bin/env python3
-
-from app import app
+# server/app.py
+from flask import Flask, request, jsonify
+from flask_migrate import Migrate
 from models import db, Restaurant, Pizza, RestaurantPizza
 
-with app.app_context():
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db.init_app(app)
+migrate = Migrate(app, db)
 
-    # This will delete any existing rows
-    # so you can run the seed file multiple times without having duplicate entries in your database
-    print("Deleting data...")
-    Pizza.query.delete()
-    Restaurant.query.delete()
-    RestaurantPizza.query.delete()
+@app.route('/restaurants', methods=['GET'])
+def get_restaurants():
+    restaurants = Restaurant.query.all()
+    return jsonify([restaurant.to_dict() for restaurant in restaurants])
 
-    print("Creating restaurants...")
-    shack = Restaurant(name="Karen's Pizza Shack", address='address1')
-    bistro = Restaurant(name="Sanjay's Pizza", address='address2')
-    palace = Restaurant(name="Kiki's Pizza", address='address3')
-    restaurants = [shack, bistro, palace]
+@app.route('/restaurants/<int:id>', methods=['GET'])
+def get_restaurant(id):
+    restaurant = Restaurant.query.get(id)
+    if restaurant:
+        return jsonify(restaurant.to_dict())
+    return jsonify({"error": "Restaurant not found"}), 404
 
-    print("Creating pizzas...")
+@app.route('/restaurants/<int:id>', methods=['DELETE'])
+def delete_restaurant(id):
+    restaurant = Restaurant.query.get(id)
+    if restaurant:
+        db.session.delete(restaurant)
+        db.session.commit()
+        return '', 204
+    return jsonify({"error": "Restaurant not found"}), 404
 
-    cheese = Pizza(name="Emma", ingredients="Dough, Tomato Sauce, Cheese")
-    pepperoni = Pizza(
-        name="Geri", ingredients="Dough, Tomato Sauce, Cheese, Pepperoni")
-    california = Pizza(
-        name="Melanie", ingredients="Dough, Sauce, Ricotta, Red peppers, Mustard")
-    pizzas = [cheese, pepperoni, california]
+@app.route('/pizzas', methods=['GET'])
+def get_pizzas():
+    pizzas = Pizza.query.all()
+    return jsonify([pizza.to_dict() for pizza in pizzas])
 
-    print("Creating RestaurantPizza...")
+@app.route('/restaurant_pizzas', methods=['POST'])
+def create_restaurant_pizza():
+    data = request.get_json()
+    try:
+        restaurant_pizza = RestaurantPizza(
+            price=data['price'],
+            pizza_id=data['pizza_id'],
+            restaurant_id=data['restaurant_id']
+        )
+        db.session.add(restaurant_pizza)
+        db.session.commit()
+        return jsonify(restaurant_pizza.to_dict()), 201
+    except ValueError as e:
+        return jsonify({"errors": [str(e)]}), 400
 
-    pr1 = RestaurantPizza(restaurant=shack, pizza=cheese, price=1)
-    pr2 = RestaurantPizza(restaurant=bistro, pizza=pepperoni, price=4)
-    pr3 = RestaurantPizza(restaurant=palace, pizza=california, price=5)
-    restaurantPizzas = [pr1, pr2, pr3]
-    db.session.add_all(restaurants)
-    db.session.add_all(pizzas)
-    db.session.add_all(restaurantPizzas)
-    db.session.commit()
-
-    print("Seeding done!")
+if __name__ == '__main__':
+    app.run(port=5555)
